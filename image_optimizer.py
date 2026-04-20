@@ -10,13 +10,20 @@ __author__ = 'Péter Kerekes'
 import os
 import shutil
 import argparse
+import warnings
 from PIL import Image, ImageOps
+import pillow_heif
 
-MAX_DIMENSION   = 2160
-SUFFIX          = "_optimized"
+MAX_DIMENSION       = 2160
+SUFFIX              = "_optimized"
+FORMAT_TARGET       = ".jpg"
+FORMAT_UNDESIRABLE  = (".bmp", ".heic", ".heif", ".webp")
+
+pillow_heif.register_heif_opener()
 
 def main(directory,
          pixel_max=MAX_DIMENSION,
+         keep_format=False,
          in_place=False,
          dry_run=False):
     print(__doc__)
@@ -32,6 +39,7 @@ def main(directory,
     print("Configuration:")
     print(f"\tInput directory: {directory}")
     print(f"\tMaximum dimension for smaller size (pixels): {pixel_max}")
+    print(f"\tKeep image formats: {keep_format}")
     print(f"\tIn-Place: {in_place}")
     if not in_place:
         print(f"\t\tOutput directory: {directory + SUFFIX}")
@@ -65,11 +73,6 @@ def main(directory,
 
             print(f"\tSize: ({img.size[0]}, {img.size[1]})", end='')
             img = __resize(img, pixel_max)
-
-            if img is None:
-                print(" -> Size OK.")
-                continue
-
             print(f" -> ({img.size[0]}, {img.size[1]})")
 
             if not dry_run:
@@ -80,13 +83,24 @@ def main(directory,
                     mtime = stat.st_mtime
                 except:
                     atime = mtime = None
+                
+                # Remove current image file
+                os.remove(file)
+
+                # Convert bitmaps and alien formats. Use compressed file format instead.
+                if not keep_format:
+                    ext = os.path.splitext(file)[1].lower()
+
+                    if ext in FORMAT_UNDESIRABLE:
+                        img = img.convert("RGB")
+                        file = os.path.splitext(file)[0] + FORMAT_TARGET
 
                 # Export image while trying to preserve EXIF metadata
                 try:
                     exif = img.info.get("exif")
                     img.save(file, optimize=True, exif=exif)
                 except Exception as e:
-                    print(f"\tWarning: Could not preserve EXIF metadata: {file} → {e}")
+                    warnings.warn(f"\tWarning: Could not preserve EXIF metadata: {file} → {e}")
                     img.save(file, optimize=True)
 
                 if atime is not None and mtime is not None:
@@ -101,7 +115,7 @@ def __resize(img, pixel_max):
 
     if ref_dimension <= pixel_max:
         # Within limit.
-        return None
+        return img
 
     # Scale down.
     scale = pixel_max / ref_dimension
@@ -118,6 +132,9 @@ if __name__ == "__main__":
                         type=int,
                         help='Maximum dimension. Resize the image so that its smaller size (dimension) ' \
                              'will have at most this many pixels. (default: %(default)s)')
+    parser.add_argument('-k', '--keep-format',
+                        action='store_true',
+                        help='Prevent converting image formats. Keep as-is.')
     parser.add_argument('-i', '--in-place',
                         action='store_true',
                         help='Do not create new files. Overwrite them in-place.')
@@ -127,5 +144,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     main(args.directory,
          args.pixel,
+         args.keep_format,
          args.in_place,
          args.dry_run)
