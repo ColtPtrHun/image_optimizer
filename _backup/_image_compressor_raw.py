@@ -4,7 +4,7 @@ import pillow_heif
 
 pillow_heif.register_heif_opener()
 
-TARGET_MIN_DIM = 1080
+TARGET_MIN_DIM = 2160
 
 SUPPORTED_EXTENSIONS = (
     ".jpg", ".jpeg", ".png", ".bmp", ".webp", ".heic", ".heif"

@@ -40,10 +40,6 @@ You can also overwrite the files in-place (without copying the directory).
 
 ```python image_optimizer.py <path_to_photos> --in-place```
 
-Or just check what would happen with dry run:
-
-```python image_optimizer.py <path_to_photos> --dry-run```
-
 Check the help message for more information:
 
 ```python image_optimizer.py <path_to_photos> --help```

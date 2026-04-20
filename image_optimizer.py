@@ -2,7 +2,7 @@
 """
 Image optimizer.
 
-Reduce the size of image files by rescaling up to the given pixel limit.
+Reduce the size of image files.
 """
 
 __author__ = 'Péter Kerekes'
@@ -24,8 +24,7 @@ pillow_heif.register_heif_opener()
 def main(directory,
          pixel_max=MAX_DIMENSION,
          keep_format=False,
-         in_place=False,
-         dry_run=False):
+         in_place=False):
     print(__doc__)
 
     # Check inputs
@@ -43,7 +42,6 @@ def main(directory,
     print(f"\tIn-Place: {in_place}")
     if not in_place:
         print(f"\t\tOutput directory: {directory + SUFFIX}")
-    print(f"\tDry run: {dry_run}")
     print()
 
     if not in_place:
@@ -53,9 +51,9 @@ def main(directory,
                                   "because you have already ran this script. Please remove " \
                                   "this directory first, and try again!")
         
-        if not dry_run:
-            shutil.copytree(directory, directory + SUFFIX) # Copy files recursively
-            directory = directory + SUFFIX # Set output directory
+        # Copy files recursively
+        shutil.copytree(directory, directory + SUFFIX)
+        directory = directory + SUFFIX # Set output directory
 
     files = []
     for dirpath, _, filenames in os.walk(directory):
@@ -66,36 +64,44 @@ def main(directory,
         try:
             print()
             img = Image.open(file)
-            print(f"{file}")
+            text_filename = str(file)
 
             # Apply EXIF orientation to pixels (fix rotation)
             img = ImageOps.exif_transpose(img)
 
-            print(f"\tSize: ({img.size[0]}, {img.size[1]})", end='')
-            img = __resize(img, pixel_max)
-            print(f" -> ({img.size[0]}, {img.size[1]})")
+            text_size = f"\tSize: ({img.size[0]}, {img.size[1]})"
+            img, changed = __resize(img, pixel_max)
+            if changed:
+                text_size += f" -> ({img.size[0]}, {img.size[1]})"
+            else:
+                text_size += " -> unchanged"
 
-            if not dry_run:
-                # Preserve file timestamps
-                try:
-                    stat = os.stat(file)
-                    atime = stat.st_atime
-                    mtime = stat.st_mtime
-                except:
-                    atime = mtime = None
-                
-                # Remove current image file
-                os.remove(file)
+            # Save file timestamps
+            try:
+                stat = os.stat(file)
+                atime = stat.st_atime
+                mtime = stat.st_mtime
+            except:
+                atime = mtime = None
 
-                # Convert bitmaps and alien formats. Use compressed file format instead.
-                if not keep_format:
-                    ext = os.path.splitext(file)[1].lower()
+            # Convert bitmaps and alien formats. Use compressed file format instead.
+            ext = os.path.splitext(file)[1].lower()
 
-                    if ext in FORMAT_UNDESIRABLE:
-                        img = img.convert("RGB")
-                        file = os.path.splitext(file)[0] + FORMAT_TARGET
+            if not keep_format and ext in FORMAT_UNDESIRABLE:
+                os.remove(file) # Remove current image file
+                changed = True
 
-                # Export image while trying to preserve EXIF metadata
+                img = img.convert("RGB")
+                file = os.path.splitext(file)[0] + FORMAT_TARGET
+                text_filename += " -> " + str(file)
+            else:
+                text_filename += " -> unchanged"
+
+            print(text_filename)
+            print(text_size)
+
+            # Export image while trying to preserve EXIF metadata.
+            if changed: # Only if it was resized or converted.
                 try:
                     exif = img.info.get("exif")
                     img.save(file, optimize=True, exif=exif)
@@ -115,13 +121,13 @@ def __resize(img, pixel_max):
 
     if ref_dimension <= pixel_max:
         # Within limit.
-        return img
+        return img, False
 
     # Scale down.
     scale = pixel_max / ref_dimension
     new_size = (int(width * scale), int(height * scale))
     # LANCZOS resampling produces best quality.
-    return img.resize(new_size, Image.LANCZOS)
+    return img.resize(new_size, Image.LANCZOS), True
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
@@ -138,12 +144,8 @@ if __name__ == "__main__":
     parser.add_argument('-i', '--in-place',
                         action='store_true',
                         help='Do not create new files. Overwrite them in-place.')
-    parser.add_argument('-d', '--dry-run',
-                        action='store_true',
-                        help='Dry run. Do not create/overwrite any files. Only display what would happen.')
     args = parser.parse_args()
     main(args.directory,
          args.pixel,
          args.keep_format,
-         args.in_place,
-         args.dry_run)
+         args.in_place)
