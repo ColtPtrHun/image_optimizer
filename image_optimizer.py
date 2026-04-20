@@ -7,16 +7,17 @@ Reduce the size of image files by rescaling up to the given pixel limit.
 
 __author__ = 'Péter Kerekes'
 
-import argparse
 import os
-from PIL import Image
+import shutil
+import argparse
+from PIL import Image, ImageOps
 
-MAX_DIMENSION   = 1920
-PREFIX          = "_optimized_"
+MAX_DIMENSION   = 1080
+SUFFIX          = "_optimized"
 
 def main(directory,
-         overwrite=True,
          pixel_max=MAX_DIMENSION,
+         in_place=False,
          dry_run=False):
     print(__doc__)
 
@@ -29,11 +30,24 @@ def main(directory,
         raise ValueError(f"Invalid argument: pixel_max={pixel_max}")
 
     print("Configuration:")
-    print(f"\tDirectory: {directory}")
-    print(f"\tOverwrite: {overwrite}")
-    print(f"\tMaximum dimension (pixels): {pixel_max}")
+    print(f"\tInput directory: {directory}")
+    print(f"\tMaximum dimension for smaller size (pixels): {pixel_max}")
+    print(f"\tIn-Place: {in_place}")
+    if not in_place:
+        print(f"\t\tOutput directory: {directory + SUFFIX}")
     print(f"\tDry run: {dry_run}")
     print()
+
+    if not in_place:
+        # Check output directory
+        if os.path.exists(directory + SUFFIX):
+            raise FileExistsError(f"{directory + SUFFIX} already exists. This is most likely " \
+                                  "because you have already ran this script. Please remove " \
+                                  "this directory first, and try again!")
+        
+        if not dry_run:
+            shutil.copytree(directory, directory + SUFFIX) # Copy files recursively
+            directory = directory + SUFFIX # Set output directory
 
     files = []
     for dirpath, _, filenames in os.walk(directory):
@@ -44,66 +58,74 @@ def main(directory,
         try:
             print()
             img = Image.open(file)
-            print(f"{file}", end='')
+            print(f"{file}")
 
-            if overwrite:
-                path = file
-                print()
-            else:
-                path = os.path.join(os.path.dirname(file), PREFIX + os.path.basename(file))
-                if os.path.exists(path): # With copy option let's not delete/overwrite any files.
-                    print(f"Error: {path} already exists!")
-                    return # Do not continue with the next file. Investigate.
-                print(f" -> {path}")
+            # Apply EXIF orientation to pixels (fix rotation)
+            img = ImageOps.exif_transpose(img)
 
             print(f"\tSize: ({img.size[0]}, {img.size[1]})", end='')
-            img, resized = __resize(img, pixel_max)
+            img = __resize(img, pixel_max)
 
-            if not resized:
+            if img is None:
                 print(" -> Size OK.")
                 continue
 
             print(f" -> ({img.size[0]}, {img.size[1]})")
 
             if not dry_run:
-                if os.path.exists(path):
-                    os.remove(path)
-                img.save(path, optimize=True)
+                # Preserve file timestamps
+                try:
+                    stat = os.stat(file)
+                    atime = stat.st_atime
+                    mtime = stat.st_mtime
+                except:
+                    atime = mtime = None
+
+                # Export image while trying to preserve EXIF metadata
+                try:
+                    exif = img.info.get("exif")
+                    img.save(file, optimize=True, exif=exif)
+                except Exception as e:
+                    print(f"\tWarning: Could not preserve EXIF metadata: {file} → {e}")
+                    img.save(file, optimize=True)
+
+                if atime is not None and mtime is not None:
+                    os.utime(file, (atime, mtime))
 
         except Exception as e:
             print(f"Skipping: {file} → {e}")
 
 def __resize(img, pixel_max):
     width, height = img.size
-    max_dim = max(width, height)
+    ref_dimension = min(width, height)
 
-    if max_dim <= pixel_max:
-        # Within limit. Return untouched.
-        return img, False
+    if ref_dimension <= pixel_max:
+        # Within limit.
+        return None
 
     # Scale down.
-    scale = pixel_max / max_dim
+    scale = pixel_max / ref_dimension
     new_size = (int(width * scale), int(height * scale))
     # LANCZOS resampling produces best quality.
-    return img.resize(new_size, Image.LANCZOS), True
+    return img.resize(new_size, Image.LANCZOS)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('directory',
                         help='Input directory that will be searched recursively for the images.')
-    parser.add_argument('-n', '--new',
-                        action='store_true',
-                        help='Create new image files instead of overwriting.')
     parser.add_argument('-p', '--pixel',
                         default=MAX_DIMENSION,
                         type=int,
-                        help='Maximum dimension. Resize the image so that its larger dimension ' \
+                        help='Maximum dimension. Resize the image so that its smaller size (dimension) ' \
                              'will have at most this many pixels. (default: %(default)s)')
-    parser.add_argument('-d', '--dry_run',
+    parser.add_argument('-i', '--in-place',
                         action='store_true',
-                        help='Dry run.')
+                        help='Do not create new files. Overwrite them in-place.')
+    parser.add_argument('-d', '--dry-run',
+                        action='store_true',
+                        help='Dry run. Do not create/overwrite any files. Only display what would happen.')
     args = parser.parse_args()
     main(args.directory,
-         not args.new,
          args.pixel,
+         args.in_place,
          args.dry_run)
