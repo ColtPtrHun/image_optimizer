@@ -20,12 +20,12 @@ Just point the script to your photos:
 ```python image_optimizer.py <path_to_photos>```
 
 First, the directory is copied (recursively) with suffix: *_optimized* (e.g: */c/pictures/* -> */c/pictures_optimized/*).
-In the new directory, every image is checked: the smaller side (dimension) shall have at most 1080 pixels.
+In the new directory, every image is checked: the smaller side (dimension) shall have at most 2160 pixels.
 The image is then scaled down if outside this limit while keeping its aspect ratio. The file/image metadata is kept.
 
-You can configure to have a different pixel limit, e.g. 720p:
+You can configure to have a different pixel limit, e.g. 1080p:
 
-```python image_optimizer.py <path_to_photos> --pixel 720```
+```python image_optimizer.py <path_to_photos> --pixel 1080```
 
 You can also overwrite the files in-place (without copying the directory).
 

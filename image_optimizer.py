@@ -12,7 +12,7 @@ import shutil
 import argparse
 from PIL import Image, ImageOps
 
-MAX_DIMENSION   = 1080
+MAX_DIMENSION   = 2160
 SUFFIX          = "_optimized"
 
 def main(directory,
