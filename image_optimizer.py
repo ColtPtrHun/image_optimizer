@@ -11,6 +11,7 @@ import os
 import shutil
 import argparse
 import warnings
+import time
 from PIL import Image, ImageOps
 import pillow_heif
 
@@ -25,6 +26,7 @@ def main(directory,
          pixel_max=MAX_DIMENSION,
          keep_format=False,
          in_place=False):
+    start_time = time.perf_counter()
     print(__doc__)
 
     # Check inputs
@@ -52,6 +54,7 @@ def main(directory,
                                   "this directory first, and try again!")
         
         # Copy files recursively
+        print("Copying files...")
         shutil.copytree(directory, directory + SUFFIX)
         directory = directory + SUFFIX # Set output directory
 
@@ -60,7 +63,9 @@ def main(directory,
         for filename in filenames:
             files.append(os.path.join(dirpath, filename))
 
-    for file in files:
+    files_optimized = 0
+
+    for file in files:        
         try:
             print()
             img = Image.open(file)
@@ -102,6 +107,8 @@ def main(directory,
 
             # Export image while trying to preserve EXIF metadata.
             if changed: # Only if it was resized or converted.
+                files_optimized += 1
+
                 try:
                     exif = img.info.get("exif")
                     img.save(file, optimize=True, exif=exif)
@@ -114,6 +121,16 @@ def main(directory,
 
         except Exception as e:
             print(f"Skipping: {file} → {e}")
+
+    # Print result
+    print(f"{os.linesep}Optimized [{files_optimized}] files of [{len(files)}].")
+
+    # Print elapsed time
+    elapsed = int(time.perf_counter() - start_time)
+    hours = elapsed // 3600
+    minutes = (elapsed % 3600) // 60
+    seconds = elapsed % 60
+    print(f"{os.linesep}Elapsed time: {hours:02d}:{minutes:02d}:{seconds:02d}")
 
 def __resize(img, pixel_max):
     width, height = img.size
